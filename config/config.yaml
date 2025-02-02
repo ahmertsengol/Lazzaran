@@ -1,0 +1,54 @@
+# Voice Assistant Configuration
+
+voice:
+  language: tr-TR
+  timeout: 5
+  ambient_duration: 1
+  commands:
+    - google
+    - youtube
+    - hava durumu
+    - saat
+    - kapat
+    - yeniden başlat
+    - hesap makinesi
+    - haberler
+    - haber ara
+    - sohbet
+
+services:
+  weather:
+    base_url: https://api.openweathermap.org/data/2.5/weather
+    units: metric
+    default_city: Istanbul
+  
+  news:
+    base_url: https://newsapi.org/v2
+    max_results: 5
+    categories:
+      - business
+      - entertainment
+      - health
+      - science
+      - sports
+      - technology
+
+ui:
+  window:
+    width: 800
+    height: 600
+    title: "Lazzaran Voice Assistant"
+  theme:
+    dark_mode: true
+    colors:
+      background: "#2b2b2b"
+      foreground: "#ffffff"
+      accent: "#404040"
+      success: "#69db7c"
+      error: "#ff6b6b"
+      warning: "#ffd43b"
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "lazzaran.log" 
