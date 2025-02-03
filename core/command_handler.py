@@ -4,6 +4,7 @@ Command handler module for processing voice commands and executing corresponding
 
 import webbrowser
 import subprocess
+import os
 from typing import Optional, Dict, Callable, List
 import logging
 import traceback
@@ -11,9 +12,12 @@ from pathlib import Path
 from datetime import datetime
 import requests
 from dataclasses import dataclass
+import asyncio
 from .services.weather import WeatherService
 from .services.news import NewsService
 from .services.ai_service import AIService
+from .services.system_service import SystemService
+import re
 
 @dataclass
 class CommandContext:
@@ -22,12 +26,14 @@ class CommandContext:
     params: dict = None
     
 class CommandHandler:
-    def __init__(self, weather_service: WeatherService, news_service: NewsService, ai_service: AIService):
+    def __init__(self, weather_service: WeatherService, news_service: NewsService, 
+                 ai_service: AIService, system_service: SystemService):
         self.logger = logging.getLogger(__name__)
         self._commands: Dict[str, Callable] = {}
         self.weather_service = weather_service
         self.news_service = news_service
         self.ai_service = ai_service
+        self.system_service = system_service
         self._register_default_commands()
         
         # Command aliases for better recognition
@@ -42,7 +48,10 @@ class CommandHandler:
             "yeniden başlat": "restart",
             "hesap makinesini aç": "hesap makinesi",
             "google'ı aç": "google",
-            "youtube'u aç": "youtube"
+            "youtube'u aç": "youtube",
+            "uygulamayı aç": "uygulama_ac",
+            "programı aç": "uygulama_ac",
+            "açar mısın": "uygulama_ac"
         }
     
     def _register_default_commands(self):
@@ -57,7 +66,8 @@ class CommandHandler:
             "hesap makinesi": self._open_calculator,
             "haberler": self._get_news,
             "haber ara": self._search_news,
-            "sohbet": self._chat_with_ai
+            "sohbet": self._chat_with_ai,
+            "uygulama_ac": self._open_application_with_ai
         })
     
     def register_command(self, keyword: str, handler: Callable):
@@ -84,26 +94,53 @@ class CommandHandler:
                 
         return None
         
-    async def process_command(self, text: str) -> Optional[str]:
-        """Process a command and return the response"""
-        if not text:
-            return None
-            
+    async def process_command(self, command: str) -> str:
+        """Process a voice command and return the response"""
         try:
-            # Find matching command
-            command = self._find_matching_command(text)
+            command = command.lower().strip()
             
-            if command and command in self._commands:
-                context = CommandContext(command=text)
-                return await self._execute_command(self._commands[command], context)
-            
-            # If no direct command found, treat it as a conversation with AI
-            return await self._chat_with_ai(CommandContext(command=text))
-            
+            # System commands
+            if "aç" in command or "çalıştır" in command or "başlat" in command:
+                app_match = re.search(r"(aç|çalıştır|başlat)\s+(.+?)(?:\s+|$)", command)
+                if app_match:
+                    app_name = app_match.group(2).strip()
+                    if self.system_service.launch_application(app_name):
+                        return f"{app_name} uygulaması başlatıldı."
+                    else:
+                        return f"Üzgünüm, {app_name} uygulamasını başlatamadım."
+
+            # Music commands
+            elif "müzik" in command or "şarkı" in command:
+                if "çal" in command or "oynat" in command:
+                    music_match = re.search(r"(çal|oynat)\s+(.+?)(?:\s+|$)", command)
+                    if music_match:
+                        music_name = music_match.group(2).strip()
+                        if self.system_service.play_music(music_name):
+                            return f"{music_name} çalınıyor."
+                        else:
+                            return f"Üzgünüm, {music_name} şarkısını bulamadım."
+                elif "durdur" in command or "dur" in command:
+                    self.system_service.stop_music()
+                    return "Müzik durduruldu."
+
+            # Weather commands
+            elif "hava" in command:
+                weather_info = await self.weather_service.get_weather()
+                return weather_info
+
+            # News commands
+            elif "haber" in command:
+                news = await self.news_service.get_news()
+                return news
+
+            # Default to AI response
+            else:
+                response = await self.ai_service.get_response(command)
+                return response
+
         except Exception as e:
-            error_msg = f"Komut işlenirken hata oluştu: {str(e)}"
-            self.logger.error(f"Command processing error: {e}\n{traceback.format_exc()}")
-            return error_msg
+            self.logger.error(f"Error processing command: {e}")
+            return "Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin."
     
     async def _execute_command(self, handler: Callable, context: CommandContext) -> str:
         """Execute a command handler safely"""
@@ -111,7 +148,9 @@ class CommandHandler:
             if asyncio.iscoroutinefunction(handler):
                 return await handler(context)
             else:
-                return handler(context)
+                # Sync fonksiyonları async olarak çalıştır
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, handler, context)
         except Exception as e:
             self.logger.error(f"Command execution error: {e}\n{traceback.format_exc()}")
             return f"Komut çalıştırılırken bir hata oluştu: {str(e)}"
@@ -227,4 +266,54 @@ class CommandHandler:
             return response if response else "Üzgünüm, şu anda cevap veremiyorum"
         except Exception as e:
             self.logger.error(f"Error in AI chat: {e}")
-            return "AI ile iletişim kurulurken bir hata oluştu" 
+            return "AI ile iletişim kurulurken bir hata oluştu"
+    
+    async def _open_application_with_ai(self, context: CommandContext) -> str:
+        """AI yardımıyla uygulamayı açar"""
+        try:
+            # AI'dan uygulama adını analiz etmesini iste
+            ai_prompt = f"""
+            Aşağıdaki komuttan açılması istenen uygulamanın adını belirle ve sadece aşağıdaki listeden en uygun .exe dosyasını seç:
+            Komut: "{context.command}"
+            
+            Lütfen sadece .exe dosya adını döndür, başka bir şey yazma.
+            Örnek yanıt formatı: "notepad.exe"
+            
+            Seçilebilecek uygulamalar:
+            - Not Defteri / Notepad: notepad.exe
+            - Hesap Makinesi / Calculator: calc.exe
+            - Paint / Resim: mspaint.exe
+            - Word / Kelime İşlemci: WINWORD.EXE
+            - Excel / Hesap Tablosu: EXCEL.EXE
+            - PowerPoint / Sunu: POWERPNT.EXE
+            - Chrome / Tarayıcı: chrome.exe
+            - Firefox: firefox.exe
+            - Spotify / Müzik: Spotify.exe
+            - Görev Yöneticisi / Task Manager: taskmgr.exe
+            - Komut İstemi / Command Prompt: cmd.exe
+            - Dosya Gezgini / File Explorer: explorer.exe
+            - Teams: Teams.exe
+            - Visual Studio Code / VS Code: Code.exe
+            - Denetim Masası / Control Panel: control.exe
+            
+            Eğer uygulama adı belirlenemezse sadece "unknown" döndür.
+            """
+            
+            exe_name = await self.ai_service.get_response(ai_prompt)
+            self.logger.info(f"AI returned exe name: {exe_name}")
+            
+            if not exe_name or exe_name.lower() == "unknown":
+                return "Üzgünüm, açmak istediğiniz uygulamayı anlayamadım."
+
+            exe_name = exe_name.strip().lower()
+            
+            # Uygulamayı başlat
+            if self.system_service.launch_application(exe_name):
+                app_name = exe_name.replace('.exe', '').title()
+                return f"{app_name} uygulaması başlatıldı."
+            else:
+                return f"Üzgünüm, {exe_name.replace('.exe', '')} uygulaması başlatılamadı."
+                
+        except Exception as e:
+            self.logger.error(f"Error in AI-assisted application opening: {e}")
+            return "Uygulama açma işlemi sırasında bir hata oluştu" 

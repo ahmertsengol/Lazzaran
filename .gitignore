@@ -37,10 +37,10 @@ ENV/
 .pydevproject
 .settings/
 
-# Logs
+# Logs and databases
 *.log
-logs/
-lazzaran.log
+*.sqlite
+*.db
 
 # Temporary files
 *.mp3
@@ -60,6 +60,6 @@ Desktop.ini
 .LSOverride
 
 # Project specific
-PyAudio*.whl
+config/secrets.yaml
 .lazzaran/
 last_conversation.json 

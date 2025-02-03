@@ -13,8 +13,18 @@ from core.command_handler import CommandHandler
 from core.services.weather import WeatherService
 from core.services.news import NewsService
 from core.services.ai_service import AIService
+from core.services.system_service import SystemService
 from ui.display import VoiceAssistantUI
 from config.settings import ConfigManager
+from dotenv import load_dotenv
+import os
+
+# .env dosyasını yükle
+load_dotenv()
+
+# Ortam değişkenlerini kullan
+api_key = os.getenv('API_KEY')
+database_url = os.getenv('DATABASE_URL')
 
 # Setup logging
 logging.basicConfig(
@@ -66,15 +76,19 @@ class LazzaranApp:
                 api_key=self.config.api_keys.gemini_api_key
             )
             
+            self.system_service = SystemService()
+            
             # Initialize command handler with services
             self.command_handler = CommandHandler(
                 weather_service=self.weather_service,
                 news_service=self.news_service,
-                ai_service=self.ai_service
+                ai_service=self.ai_service,
+                system_service=self.system_service
             )
             
-            # Initialize UI
+            # Initialize UI with system service
             self.ui = VoiceAssistantUI(
+                system_service=self.system_service,
                 on_start=self.start_listening,
                 on_stop=self.stop_listening
             )
@@ -92,6 +106,8 @@ class LazzaranApp:
             if response:
                 self.ui.log_message(f"Lazzaran: {response}", "success")
                 await self.speak_response(response)
+                # Uygulama listesini güncelle
+                self.ui.refresh_app_list()
         except Exception as e:
             error_msg = f"Komut işlenirken hata oluştu: {str(e)}"
             logger.error(f"Command processing error: {e}\n{traceback.format_exc()}")
@@ -168,6 +184,9 @@ class LazzaranApp:
                         file.unlink()
                 except Exception as e:
                     logger.warning(f"Error deleting temp file {file}: {e}")
+            
+            # Stop music if playing
+            self.system_service.stop_music()
             
             # Shutdown thread pool
             self.executor.shutdown(wait=False)
