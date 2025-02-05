@@ -191,7 +191,7 @@ Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için [LICENSE](LICE
 
 ## 📞 İletişim
 
-Ahmet Şengöl - [@ahmertsengol](https://twitter.com/ahmertsengol) - 21sandn21@gmail.com
+Ahmet Mert Şengöl - [@ahmertsengol](https://twitter.com/ahmertsengol) - 21sandn21@gmail.com
 
 Proje Linki: [https://github.com/ahmertsengol/Lazzaran](https://github.com/ahmertsengol/Lazzaran)
 
