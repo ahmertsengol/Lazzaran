@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Lazzaran Logo](assets/logo.png)
+![Lazzaran Logo](assets/logo.jpg)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)](https://www.python.org/)
