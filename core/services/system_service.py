@@ -36,7 +36,28 @@ class SystemService:
         self.running_apps: Dict[str, subprocess.Popen] = {}
         self.discovered_apps: Dict[str, ApplicationInfo] = {}
         pythoncom.CoInitialize()  # COM'u başlat
-        self._scan_for_applications()
+        
+        # Common Windows application paths
+        self._COMMON_APPS = {
+            "notepad.exe": "C:\\Windows\\System32\\notepad.exe",
+            "calc.exe": "C:\\Windows\\System32\\calc.exe",
+            "mspaint.exe": "C:\\Windows\\System32\\mspaint.exe",
+            "cmd.exe": "C:\\Windows\\System32\\cmd.exe",
+            "explorer.exe": "C:\\Windows\\explorer.exe",
+            "taskmgr.exe": "C:\\Windows\\System32\\taskmgr.exe",
+            "control.exe": "C:\\Windows\\System32\\control.exe",
+            "chrome.exe": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            "firefox.exe": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+            "WINWORD.EXE": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+            "EXCEL.EXE": "C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE",
+            "POWERPNT.EXE": "C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE",
+            "Code.exe": "C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+            "Spotify.exe": "C:\\Users\\%USERNAME%\\AppData\\Roaming\\Spotify\\Spotify.exe",
+            "Teams.exe": "C:\\Users\\%USERNAME%\\AppData\\Local\\Microsoft\\Teams\\current\\Teams.exe"
+        }
+        
+        # Start initial scan
+        self._initial_scan()
         
     def __del__(self):
         """Cleanup when object is destroyed"""
@@ -44,6 +65,20 @@ class SystemService:
             pythoncom.CoUninitialize()  # COM'u temizle
         except:
             pass
+    
+    def _initial_scan(self):
+        """Initial scan for applications"""
+        try:
+            # Expand environment variables in paths
+            for exe_name, path in self._COMMON_APPS.items():
+                expanded_path = os.path.expandvars(path)
+                self._COMMON_APPS[exe_name] = expanded_path
+                
+            # Scan for applications
+            self._scan_for_applications()
+            
+        except Exception as e:
+            self.logger.error(f"Application scan error: {e}")
     
     def _scan_for_applications(self):
         """Sistemde yüklü uygulamaları tara"""
@@ -189,24 +224,58 @@ class SystemService:
         """Kullanılabilir tüm uygulamaları listele"""
         return list(self.discovered_apps.values())
     
-    def launch_application(self, exe_name: str) -> bool:
-        """Uygulamayı başlat"""
+    def launch_application(self, app_name: str) -> bool:
+        """Launch an application by name"""
         try:
-            exe_name = exe_name.lower()
-            if exe_name in self.discovered_apps:
-                app_info = self.discovered_apps[exe_name]
-                if not app_info.is_running:
-                    process = subprocess.Popen([app_info.path])
-                    self.running_apps[exe_name] = process
-                    app_info.is_running = True
-                    self.logger.info(f"Successfully launched {app_info.name}")
+            app_name = app_name.lower()
+            
+            # Special launch commands for specific applications
+            special_launch = {
+                "discord": lambda path: subprocess.Popen([path, "--processStart", "Discord.exe"]),
+                "steam": lambda path: subprocess.Popen([path, "-silent"]),
+                "opera": lambda path: subprocess.Popen([path, "--disable-update"]),
+            }
+            
+            # System apps direct launch
+            system_apps = {
+                "calculator": "calc.exe",
+                "calc": "calc.exe",
+                "notepad": "notepad.exe",
+                "paint": "mspaint.exe",
+                "cmd": "cmd.exe",
+                "explorer": "explorer.exe",
+                "taskmgr": "taskmgr.exe",
+                "control": "control.exe"
+            }
+            
+            # If it's a system app, try to launch directly first
+            if app_name in system_apps:
+                try:
+                    subprocess.Popen([system_apps[app_name]])
+                    self.logger.info(f"Successfully launched system app {app_name}")
                     return True
+                except Exception as e:
+                    self.logger.error(f"Error launching system app {app_name} directly: {e}")
+                    # Continue to normal path search if direct launch fails
+            
+            # Try to find the application path
+            app_path = self._find_application_path(app_name)
+            
+            # If found, launch the application
+            if app_path and os.path.exists(app_path):
+                if app_name in special_launch:
+                    special_launch[app_name](app_path)
                 else:
-                    self.logger.info(f"Application {app_info.name} is already running")
-                    return True
-            return False
+                    subprocess.Popen([app_path])
+                    
+                self.logger.info(f"Successfully launched {app_name} from {app_path}")
+                return True
+            else:
+                self.logger.warning(f"Application {app_name} not found")
+                return False
+                
         except Exception as e:
-            self.logger.error(f"Error launching application {exe_name}: {e}")
+            self.logger.error(f"Error launching application {app_name}: {e}")
             return False
     
     def terminate_application(self, exe_name: str) -> bool:
@@ -258,49 +327,96 @@ class SystemService:
             return []
 
     def _find_application_path(self, app_name: str) -> Optional[str]:
-        """Find the path of an application"""
-        # First check our configured paths
-        if app_name.lower() in self.app_paths:
-            return self.app_paths[app_name.lower()]
-
-        # For Windows, search in common program directories
-        if self.system == "Windows":
-            try:
-                common_paths = [
-                    os.environ.get('PROGRAMFILES', ''),
-                    os.environ.get('PROGRAMFILES(X86)', ''),
-                    os.environ.get('LOCALAPPDATA', ''),
-                    os.environ.get('APPDATA', '')
+        """Find the path of an application by searching common locations"""
+        try:
+            # Convert app name to lowercase for comparison
+            app_name = app_name.lower()
+            
+            # System application mappings
+            system_apps = {
+                "calculator": "calc.exe",
+                "notepad": "notepad.exe",
+                "paint": "mspaint.exe",
+                "cmd": "cmd.exe",
+                "explorer": "explorer.exe",
+                "taskmgr": "taskmgr.exe",
+                "control": "control.exe"
+            }
+            
+            # If it's a system app, convert to correct exe name
+            if app_name in system_apps:
+                app_name = system_apps[app_name]
+            
+            # Common program paths for specific applications
+            specific_paths = {
+                "discord": [
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), "Discord", "Update.exe"),
+                    os.path.join(os.environ.get('APPDATA', ''), "Discord", "Update.exe")
+                ],
+                "steam": [
+                    "C:\\Program Files (x86)\\Steam\\steam.exe",
+                    os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), "Steam", "steam.exe")
+                ],
+                "opera": [
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), "Programs", "Opera", "launcher.exe"),
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), "Programs", "Opera GX", "launcher.exe")
+                ],
+                "spotify": [
+                    os.path.join(os.environ.get('APPDATA', ''), "Spotify", "Spotify.exe")
+                ],
+                "telegram": [
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), "Telegram Desktop", "Telegram.exe")
+                ],
+                "whatsapp": [
+                    os.path.join(os.environ.get('LOCALAPPDATA', ''), "WhatsApp", "WhatsApp.exe")
                 ]
-                
-                # Search in Windows Registry
-                for root_key in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
-                    try:
-                        key = winreg.OpenKey(root_key, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths")
-                        for i in range(winreg.QueryInfoKey(key)[0]):
-                            try:
-                                app_key = winreg.EnumKey(key, i)
-                                if app_name.lower() in app_key.lower():
-                                    app_key_path = winreg.OpenKey(key, app_key)
-                                    path = winreg.QueryValue(app_key_path, None)
-                                    if path and os.path.exists(path):
-                                        return path
-                            except WindowsError:
-                                continue
-                    except WindowsError:
-                        continue
-
-                # Search in common paths
-                for base_path in common_paths:
-                    for root, dirs, files in os.walk(base_path):
-                        for file in files:
-                            if file.lower().startswith(app_name.lower()) and file.lower().endswith('.exe'):
-                                return os.path.join(root, file)
-                                
-            except Exception as e:
-                self.logger.error(f"Error searching for application: {e}")
-                
-        return None
+            }
+            
+            # First check if it's a system app in System32
+            if app_name in ["calc.exe", "notepad.exe", "mspaint.exe", "cmd.exe", "taskmgr.exe", "control.exe"]:
+                system32_path = os.path.join(os.environ.get('WINDIR', ''), 'System32', app_name)
+                if os.path.exists(system32_path):
+                    return system32_path
+            
+            # Then check specific paths
+            if app_name.replace('.exe', '') in specific_paths:
+                for path in specific_paths[app_name.replace('.exe', '')]:
+                    if os.path.exists(path):
+                        return path
+            
+            # Common locations to search
+            search_locations = [
+                os.environ.get('PROGRAMFILES', ''),
+                os.environ.get('PROGRAMFILES(X86)', ''),
+                os.environ.get('LOCALAPPDATA', ''),
+                os.environ.get('APPDATA', ''),
+                r"C:\Windows",
+                r"C:\Windows\System32"
+            ]
+            
+            # If it's a .exe file, use it as is, otherwise append .exe
+            search_name = app_name if app_name.endswith('.exe') else f"{app_name}.exe"
+            
+            # Search in common locations
+            for location in search_locations:
+                if not location:
+                    continue
+                    
+                # First try direct path
+                direct_path = os.path.join(location, search_name)
+                if os.path.exists(direct_path):
+                    return direct_path
+                    
+                # Then search in subdirectories
+                for root, dirs, files in os.walk(location):
+                    if search_name.lower() in (f.lower() for f in files):
+                        return os.path.join(root, search_name)
+                        
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error finding application path: {e}")
+            return None
 
     def _find_music_file(self, music_name: str) -> Optional[str]:
         """Find a music file in configured music directories"""

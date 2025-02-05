@@ -18,6 +18,7 @@ from .services.news import NewsService
 from .services.ai_service import AIService
 from .services.system_service import SystemService
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 @dataclass
 class CommandContext:
@@ -28,31 +29,25 @@ class CommandContext:
 class CommandHandler:
     def __init__(self, weather_service: WeatherService, news_service: NewsService, 
                  ai_service: AIService, system_service: SystemService):
+        """Initialize CommandHandler"""
         self.logger = logging.getLogger(__name__)
-        self._commands: Dict[str, Callable] = {}
+        self._commands = {}
+        self._command_aliases = {}  # Initialize empty dictionary for aliases
+        
+        # Set up services
         self.weather_service = weather_service
         self.news_service = news_service
         self.ai_service = ai_service
         self.system_service = system_service
+        
+        # Initialize thread pool
+        self._executor = ThreadPoolExecutor(max_workers=4)
+        
+        # Register default commands first
         self._register_default_commands()
         
-        # Command aliases for better recognition
-        self.command_aliases = {
-            "haber ver": "haberler",
-            "haberleri göster": "haberler",
-            "havayı söyle": "hava durumu",
-            "saat kaç": "saat",
-            "saati söyle": "saat",
-            "bilgisayarı kapat": "kapat",
-            "sistemi kapat": "kapat",
-            "yeniden başlat": "restart",
-            "hesap makinesini aç": "hesap makinesi",
-            "google'ı aç": "google",
-            "youtube'u aç": "youtube",
-            "uygulamayı aç": "uygulama_ac",
-            "programı aç": "uygulama_ac",
-            "açar mısın": "uygulama_ac"
-        }
+        # Then register command aliases
+        self._register_command_aliases()
     
     def _register_default_commands(self):
         """Register default command handlers"""
@@ -68,6 +63,51 @@ class CommandHandler:
             "haber ara": self._search_news,
             "sohbet": self._chat_with_ai,
             "uygulama_ac": self._open_application_with_ai
+        })
+    
+    def _register_command_aliases(self):
+        """Register command aliases"""
+        self._command_aliases.update({
+            # News commands
+            "haber ver": "haberler",
+            "haberleri göster": "haberler",
+            
+            # Weather commands
+            "havayı söyle": "hava durumu",
+            "hava nasıl": "hava durumu",
+            
+            # Time commands
+            "saat kaç": "saat",
+            "saati söyle": "saat",
+            
+            # System commands
+            "bilgisayarı kapat": "kapat",
+            "sistemi kapat": "kapat",
+            "yeniden başlat": "restart",
+            
+            # Application commands
+            "hesap makinesini aç": "calculator",
+            "not defterini aç": "notepad",
+            "google'ı aç": "google",
+            "youtube'u aç": "youtube",
+            "spotify'ı aç": "spotify",
+            "müzik aç": "spotify",
+            "tarayıcıyı aç": "chrome",
+            "chrome'u aç": "chrome",
+            "firefox'u aç": "firefox",
+            "word'ü aç": "word",
+            "excel'i aç": "excel",
+            "powerpoint'i aç": "powerpoint",
+            "vscode'u aç": "vscode",
+            "teams'i aç": "teams",
+            "dosya gezginini aç": "explorer",
+            "görev yöneticisini aç": "taskmgr",
+            "denetim masasını aç": "control",
+            
+            # Generic application commands
+            "uygulamayı aç": "uygulama_ac",
+            "programı aç": "uygulama_ac",
+            "açar mısın": "uygulama_ac"
         })
     
     def register_command(self, keyword: str, handler: Callable):
@@ -88,56 +128,129 @@ class CommandHandler:
                 return keyword
         
         # Then check aliases
-        for alias, command in self.command_aliases.items():
+        for alias, command in self._command_aliases.items():
             if alias in text:
                 return command
                 
         return None
         
+    def _get_app_name_from_command(self, command: str) -> Optional[str]:
+        """Extract application name from command"""
+        # Application opening keywords
+        app_keywords = {"aç", "başlat", "çalıştır", "göster", "hazır"}
+        
+        # Common application names and their aliases
+        APP_ALIASES = {
+            # Browsers
+            "chrome": ["chrome", "google chrome", "tarayıcı", "browser"],
+            "firefox": ["firefox", "mozilla"],
+            "opera": ["opera", "opera gx", "opera browser"],
+            "edge": ["edge", "microsoft edge"],
+            
+            # Office Apps
+            "word": ["word", "microsoft word", "kelime işlemci"],
+            "excel": ["excel", "microsoft excel", "hesap tablosu"],
+            "powerpoint": ["powerpoint", "microsoft powerpoint", "sunu", "sunum"],
+            
+            # Development
+            "vscode": ["vscode", "visual studio code", "vs code", "visual studio"],
+            
+            # Communication
+            "teams": ["teams", "microsoft teams"],
+            "discord": ["discord", "dc"],
+            "skype": ["skype"],
+            "telegram": ["telegram"],
+            "whatsapp": ["whatsapp", "wp"],
+            
+            # Media & Entertainment
+            "spotify": ["spotify", "müzik"],
+            "steam": ["steam", "valve"],
+            "epic": ["epic", "epic games"],
+            "vlc": ["vlc", "vlc player", "media player"],
+            
+            # System Apps
+            "notepad": ["notepad", "not defteri", "not", "notlar"],
+            "calculator": ["calculator", "hesap makinesi", "hesap", "hesapla", "hesaplayıcı"],
+            "paint": ["paint", "resim", "çizim"],
+            "cmd": ["cmd", "komut istemi", "terminal", "command prompt"],
+            "explorer": ["explorer", "dosya gezgini", "gezgin", "dosyalar"],
+            "taskmgr": ["task manager", "görev yöneticisi", "görevler"],
+            "control": ["control panel", "denetim masası", "kontrol", "ayarlar"]
+        }
+
+        # Split command into words
+        words = command.lower().split()
+        
+        # Check if command contains an opening keyword
+        if not any(keyword in words for keyword in app_keywords):
+            return None
+            
+        # Get the part after the keyword
+        for i, word in enumerate(words):
+            if word in app_keywords:
+                app_phrase = " ".join(words[:i] + words[i+1:])  # Tüm kelimeleri al, anahtar kelime hariç
+                break
+        else:
+            return None
+            
+        # Check for direct matches in aliases
+        for app_name, aliases in APP_ALIASES.items():
+            if any(alias in app_phrase for alias in aliases) or any(alias in command for alias in aliases):
+                return app_name
+                
+        # If no match found in aliases, try AI-based matching
+        return None
+
     async def process_command(self, command: str) -> str:
         """Process a voice command and return the response"""
         try:
             command = command.lower().strip()
             
-            # System commands
-            if "aç" in command or "çalıştır" in command or "başlat" in command:
-                app_match = re.search(r"(aç|çalıştır|başlat)\s+(.+?)(?:\s+|$)", command)
-                if app_match:
-                    app_name = app_match.group(2).strip()
-                    if self.system_service.launch_application(app_name):
-                        return f"{app_name} uygulaması başlatıldı."
-                    else:
-                        return f"Üzgünüm, {app_name} uygulamasını başlatamadım."
-
-            # Music commands
-            elif "müzik" in command or "şarkı" in command:
-                if "çal" in command or "oynat" in command:
-                    music_match = re.search(r"(çal|oynat)\s+(.+?)(?:\s+|$)", command)
-                    if music_match:
-                        music_name = music_match.group(2).strip()
-                        if self.system_service.play_music(music_name):
-                            return f"{music_name} çalınıyor."
-                        else:
-                            return f"Üzgünüm, {music_name} şarkısını bulamadım."
-                elif "durdur" in command or "dur" in command:
-                    self.system_service.stop_music()
-                    return "Müzik durduruldu."
-
-            # Weather commands
-            elif "hava" in command:
-                weather_info = await self.weather_service.get_weather()
-                return weather_info
-
-            # News commands
-            elif "haber" in command:
-                news = await self.news_service.get_news()
-                return news
-
-            # Default to AI response
-            else:
-                response = await self.ai_service.get_response(command)
-                return response
-
+            # First check for application opening commands
+            app_name = self._get_app_name_from_command(command)
+            if app_name:
+                # Eğer hesap makinesi ise ve "hazır" kelimesi varsa özel yanıt ver
+                if app_name == "calculator" and "hazır" in command:
+                    return "Hesap makinesi hazır! Ne hesaplamak istersin?"
+                    
+                # Uygulamayı başlat
+                success = self.system_service.launch_application(app_name)
+                
+                # Özel yanıtlar
+                app_responses = {
+                    "discord": "Discord'u senin için açıyorum. İyi eğlenceler!",
+                    "steam": "Steam'i başlatıyorum. İyi oyunlar!",
+                    "opera": "Opera tarayıcını açıyorum. Keyifli tarama!",
+                    "spotify": "Spotify açılıyor. Keyifli dinlemeler!",
+                    "chrome": "Chrome tarayıcını açıyorum. İyi gezinmeler!",
+                    "firefox": "Firefox tarayıcını açıyorum. İyi gezinmeler!",
+                    "vscode": "Visual Studio Code başlatılıyor. İyi kodlamalar!",
+                    "notepad": "Not defteri açılıyor. İyi notlar!",
+                    "calculator": "Hesap makinesi açılıyor. İyi hesaplamalar!"
+                }
+                
+                if success:
+                    return app_responses.get(app_name, f"{app_name.title()} başarıyla açıldı.")
+                else:
+                    return f"Üzgünüm, {app_name.title()} uygulaması bilgisayarınızda bulunamadı veya açılamadı."
+            
+            # Check for web commands
+            if "youtube" in command:
+                return self._open_youtube(CommandContext(command=command))
+            elif "google" in command:
+                return self._open_google(CommandContext(command=command))
+            
+            # Check for other commands
+            command_key = self._find_matching_command(command)
+            if command_key and command_key in self._commands:
+                return await self._execute_command(
+                    self._commands[command_key],
+                    CommandContext(command=command)
+                )
+            
+            # If no command matches, use AI
+            return await self._chat_with_ai(CommandContext(command=command))
+            
         except Exception as e:
             self.logger.error(f"Error processing command: {e}")
             return "Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin."
@@ -273,46 +386,32 @@ class CommandHandler:
         try:
             # AI'dan uygulama adını analiz etmesini iste
             ai_prompt = f"""
-            Aşağıdaki komuttan açılması istenen uygulamanın adını belirle ve sadece aşağıdaki listeden en uygun .exe dosyasını seç:
+            Aşağıdaki komuttan açılması istenen uygulamanın adını belirle:
             Komut: "{context.command}"
             
-            Lütfen sadece .exe dosya adını döndür, başka bir şey yazma.
-            Örnek yanıt formatı: "notepad.exe"
-            
-            Seçilebilecek uygulamalar:
-            - Not Defteri / Notepad: notepad.exe
-            - Hesap Makinesi / Calculator: calc.exe
-            - Paint / Resim: mspaint.exe
-            - Word / Kelime İşlemci: WINWORD.EXE
-            - Excel / Hesap Tablosu: EXCEL.EXE
-            - PowerPoint / Sunu: POWERPNT.EXE
-            - Chrome / Tarayıcı: chrome.exe
-            - Firefox: firefox.exe
-            - Spotify / Müzik: Spotify.exe
-            - Görev Yöneticisi / Task Manager: taskmgr.exe
-            - Komut İstemi / Command Prompt: cmd.exe
-            - Dosya Gezgini / File Explorer: explorer.exe
-            - Teams: Teams.exe
-            - Visual Studio Code / VS Code: Code.exe
-            - Denetim Masası / Control Panel: control.exe
+            Lütfen sadece uygulama adını döndür, başka bir şey yazma.
+            Örnek yanıt formatları: 
+            - "chrome"
+            - "notepad"
+            - "calculator"
+            - "spotify"
             
             Eğer uygulama adı belirlenemezse sadece "unknown" döndür.
             """
             
-            exe_name = await self.ai_service.get_response(ai_prompt)
-            self.logger.info(f"AI returned exe name: {exe_name}")
+            app_name = await self.ai_service.get_response(ai_prompt)
+            self.logger.info(f"AI returned app name: {app_name}")
             
-            if not exe_name or exe_name.lower() == "unknown":
+            if not app_name or app_name.lower() == "unknown":
                 return "Üzgünüm, açmak istediğiniz uygulamayı anlayamadım."
-
-            exe_name = exe_name.strip().lower()
+            
+            app_name = app_name.strip().lower()
             
             # Uygulamayı başlat
-            if self.system_service.launch_application(exe_name):
-                app_name = exe_name.replace('.exe', '').title()
-                return f"{app_name} uygulaması başlatıldı."
+            if self.system_service.launch_application(app_name):
+                return f"{app_name.title()} uygulaması başarıyla açıldı."
             else:
-                return f"Üzgünüm, {exe_name.replace('.exe', '')} uygulaması başlatılamadı."
+                return f"Üzgünüm, {app_name.title()} uygulaması bilgisayarınızda bulunamadı veya açılamadı."
                 
         except Exception as e:
             self.logger.error(f"Error in AI-assisted application opening: {e}")

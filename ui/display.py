@@ -280,17 +280,32 @@ class VoiceAssistantUI:
     
     def refresh_app_list(self):
         """Uygulama listesini yenile"""
-        # Mevcut listeyi temizle
-        for item in self.app_tree.get_children():
-            self.app_tree.delete(item)
-        
-        # Sistem servisini yenile
-        self.system_service.refresh_application_list()
-        
-        # Uygulamaları listele
-        for app in self.system_service.get_available_applications():
-            status = "Çalışıyor" if app.is_running else "Durgun"
-            self.app_tree.insert('', tk.END, values=(app.name, status, app.description), tags=(app.exe_name,))
+        try:
+            # Mevcut seçili uygulamayı hatırla
+            selected_items = self.app_tree.selection()
+            selected_exe = None
+            if selected_items:
+                selected_exe = self.app_tree.item(selected_items[0])['tags'][0]
+
+            # Mevcut listeyi temizle
+            for item in self.app_tree.get_children():
+                self.app_tree.delete(item)
+            
+            # Uygulamaları listele
+            for app in self.system_service.get_available_applications():
+                status = "Çalışıyor" if app.is_running else "Durgun"
+                self.app_tree.insert('', tk.END, values=(app.name, status, app.description), tags=(app.exe_name,))
+                
+            # Önceki seçimi geri yükle
+            if selected_exe:
+                for item in self.app_tree.get_children():
+                    if selected_exe in self.app_tree.item(item)['tags']:
+                        self.app_tree.selection_set(item)
+                        self.app_tree.see(item)
+                        break
+                        
+        except Exception as e:
+            self.log_message(f"Uygulama listesi güncellenirken hata oluştu: {str(e)}", "error")
     
     def launch_selected_app(self):
         """Seçili uygulamayı başlat"""
