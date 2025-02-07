@@ -198,6 +198,6 @@ Proje Linki: [https://github.com/ahmertsengol/Lazzaran](https://github.com/ahmer
 ---
 
 <div align="center">
-Made with ❤️ by <a href="https://github.com/ahmertsengol">Ahmet Mert Şengöl</a>
+Made with ❤️ by <a href="https://github.com/ahmertsengol">Ahmet Mert Şengöl.</a>
 </div>
 
