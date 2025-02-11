@@ -4,51 +4,62 @@ voice:
   language: tr-TR
   timeout: 5
   ambient_duration: 1
-  commands:
-    - google
-    - youtube
-    - hava durumu
-    - saat
-    - kapat
-    - yeniden başlat
-    - hesap makinesi
-    - haberler
-    - haber ara
-    - sohbet
+  energy_threshold: 4000
+  pause_threshold: 0.8
+  non_speaking_duration: 0.5
+  dynamic_energy_threshold: true
 
-services:
-  weather:
-    base_url: https://api.openweathermap.org/data/2.5/weather
-    units: metric
-    default_city: Istanbul
-  
-  news:
-    base_url: https://newsapi.org/v2
-    max_results: 5
-    categories:
-      - business
-      - entertainment
-      - health
-      - science
-      - sports
-      - technology
+# Recognition settings
+recognition:
+  sample_rate: 16000
+  channels: 1
+  chunk_size: 1024
+  max_retries: 3
+  retry_delay: 1.0
 
-ui:
-  window:
+# GUI settings
+gui:
+  theme: dark
+  window_title: "Lazzaran - Türkçe Sesli Asistan"
+  window_size:
     width: 800
     height: 600
-    title: "Lazzaran Voice Assistant"
-  theme:
-    dark_mode: true
-    colors:
-      background: "#2b2b2b"
-      foreground: "#ffffff"
-      accent: "#404040"
-      success: "#69db7c"
-      error: "#ff6b6b"
-      warning: "#ffd43b"
+  opacity: 0.95
 
+# Logging settings
 logging:
   level: INFO
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: "lazzaran.log" 
+  file: lazzaran.log
+
+# Service settings
+services:
+  weather:
+    update_interval: 1800  # 30 minutes
+    default_city: "Istanbul"
+  
+  news:
+    update_interval: 3600  # 1 hour
+    max_articles: 10
+    categories:
+      - general
+      - technology
+      - business
+  
+  ai:
+    model: "gemini-pro"
+    temperature: 0.7
+    max_tokens: 1000
+    context_length: 10
+
+commands:
+  - google
+  - youtube
+  - hava durumu
+  - saat
+  - kapat
+  - yeniden başlat
+  - hesap makinesi
+  - haberler
+  - haber ara
+  - sohbet 

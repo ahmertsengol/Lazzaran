@@ -1,86 +1,104 @@
 """
-Configuration management for the voice assistant application.
+Configuration manager for Lazzaran voice assistant.
+Handles loading and managing all configuration settings.
 """
 
 import os
-from pathlib import Path
-from typing import Dict, Any
 import yaml
+import json
+from pathlib import Path
 from dataclasses import dataclass
+from typing import Dict, Any, Optional
 
 @dataclass
-class APIConfig:
-    gemini_api_key: str = None
-    news_api_key: str = None
-    weather_api_key: str = None
+class VoiceSettings:
+    """Voice-related settings."""
+    language: str
+    timeout: int
+    ambient_duration: int
+    energy_threshold: int
+    pause_threshold: float
+    non_speaking_duration: float
 
 @dataclass
-class VoiceConfig:
-    language: str = 'tr-TR'
-    timeout: int = 5
-    ambient_duration: int = 1
-
-@dataclass
-class AppConfig:
-    api: APIConfig
-    voice: VoiceConfig
-    temp_dir: Path
+class APIKeys:
+    """API keys for various services."""
+    weather_api_key: str
+    news_api_key: str
+    gemini_api_key: str
 
 class ConfigManager:
-    _instance = None
+    """Configuration manager class."""
     
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize()
-        return cls._instance
-    
-    def _initialize(self):
-        """Initialize configuration from environment variables and config file"""
-        self.config_path = Path(__file__).parent / 'config.yaml'
-        self.config = self._load_config()
-    
-    def _load_config(self) -> AppConfig:
-        """Load configuration from YAML file and environment variables"""
-        # Load from YAML
-        config_data = {}
-        if self.config_path.exists():
-            with open(self.config_path, 'r', encoding='utf-8') as f:
-                config_data = yaml.safe_load(f)
+    def __init__(self):
+        """Initialize configuration manager."""
+        self.config_dir = Path(__file__).parent
+        self.project_root = self.config_dir.parent
+        self.temp_directory = self.project_root / "temp"
         
-        # Override with environment variables
-        api_config = APIConfig(
-            gemini_api_key=os.getenv('GEMINI_API_KEY', config_data.get('api', {}).get('gemini_api_key')),
-            news_api_key=os.getenv('NEWS_API_KEY', config_data.get('api', {}).get('news_api_key')),
-            weather_api_key=os.getenv('WEATHER_API_KEY', config_data.get('api', {}).get('weather_api_key'))
+        # Create temp directory if it doesn't exist
+        self.temp_directory.mkdir(exist_ok=True)
+        
+        # Load configurations
+        self._load_config()
+        self._load_system_paths()
+        self._load_env_variables()
+    
+    def _load_config(self):
+        """Load main configuration from YAML file."""
+        config_file = self.config_dir / "config.yaml"
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            # Parse voice settings
+            voice_config = config.get('voice', {})
+            self.voice_settings = VoiceSettings(
+                language=voice_config.get('language', 'tr-TR'),
+                timeout=voice_config.get('timeout', 5),
+                ambient_duration=voice_config.get('ambient_duration', 1),
+                energy_threshold=voice_config.get('energy_threshold', 4000),
+                pause_threshold=voice_config.get('pause_threshold', 0.8),
+                non_speaking_duration=voice_config.get('non_speaking_duration', 0.5)
+            )
+            
+        except Exception as e:
+            raise RuntimeError(f"Error loading config.yaml: {e}")
+    
+    def _load_system_paths(self):
+        """Load system paths from JSON file."""
+        paths_file = self.config_dir / "system_paths.json"
+        try:
+            with open(paths_file, 'r', encoding='utf-8') as f:
+                self.system_paths = json.load(f)
+        except Exception as e:
+            raise RuntimeError(f"Error loading system_paths.json: {e}")
+    
+    def _load_env_variables(self):
+        """Load API keys from environment variables."""
+        self.api_keys = APIKeys(
+            weather_api_key=os.getenv('WEATHER_API_KEY', ''),
+            news_api_key=os.getenv('NEWS_API_KEY', ''),
+            gemini_api_key=os.getenv('GEMINI_API_KEY', '')
         )
         
-        voice_config = VoiceConfig(
-            language=os.getenv('VOICE_LANGUAGE', config_data.get('voice', {}).get('language', 'tr-TR')),
-            timeout=int(os.getenv('VOICE_TIMEOUT', config_data.get('voice', {}).get('timeout', 5))),
-            ambient_duration=int(os.getenv('AMBIENT_DURATION', config_data.get('voice', {}).get('ambient_duration', 1)))
-        )
+        # Validate API keys
+        self._validate_api_keys()
+    
+    def _validate_api_keys(self):
+        """Validate that all required API keys are present."""
+        missing_keys = []
+        for key, value in self.api_keys.__dict__.items():
+            if not value:
+                missing_keys.append(key)
         
-        temp_dir = Path(os.getenv('TEMP_DIR', config_data.get('temp_dir', Path.home() / '.lazzaran' / 'temp')))
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        
-        return AppConfig(
-            api=api_config,
-            voice=voice_config,
-            temp_dir=temp_dir
-        )
+        if missing_keys:
+            raise RuntimeError(f"Missing required API keys: {', '.join(missing_keys)}")
     
-    @property
-    def api_keys(self) -> APIConfig:
-        """Get API configuration"""
-        return self.config.api
+    def get_app_path(self, app_name: str) -> Optional[str]:
+        """Get system path for a specific application."""
+        return self.system_paths.get(app_name)
     
-    @property
-    def voice_settings(self) -> VoiceConfig:
-        """Get voice configuration"""
-        return self.config.voice
-    
-    @property
-    def temp_directory(self) -> Path:
-        """Get temporary directory path"""
-        return self.config.temp_dir 
+    def get_temp_file_path(self, filename: str) -> Path:
+        """Get path for a temporary file."""
+        return self.temp_directory / filename 

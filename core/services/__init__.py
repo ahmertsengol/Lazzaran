@@ -1,11 +1,16 @@
-"""Services module for Lazzaran Voice Assistant."""
+"""
+Service modules initialization.
+This package contains various service integrations for the Lazzaran voice assistant.
+"""
 
-from .weather import WeatherService, WeatherInfo
-from .news import NewsService, NewsArticle
-from .ai_service import AIService, Conversation
+from .ai_service import AIService
+from .news import NewsService
+from .system_service import SystemService
+from .weather import WeatherService
 
 __all__ = [
-    'WeatherService', 'WeatherInfo',
-    'NewsService', 'NewsArticle',
-    'AIService', 'Conversation'
+    'AIService',
+    'NewsService',
+    'SystemService',
+    'WeatherService'
 ] 

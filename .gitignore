@@ -1,5 +1,6 @@
 # Environment variables
 .env
+.env.*
 
 # Python
 __pycache__/
@@ -33,29 +34,25 @@ ENV/
 .vscode/
 *.swp
 *.swo
-.project
-.pydevproject
-.settings/
 
-# Logs and databases
+# Logs
 *.log
-*.sqlite
-*.db
+logs/
+log/
 
-# Temporary files
-*.mp3
-*.wav
-*.temp
+# Temp files
+*.tmp
 temp/
-.temp/
-.tmp/
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Windows
-Thumbs.db
 Desktop.ini
 
 # macOS
-.DS_Store
 .AppleDouble
 .LSOverride
 

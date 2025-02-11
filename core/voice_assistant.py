@@ -16,6 +16,7 @@ import time
 
 @dataclass
 class VoiceAssistantConfig:
+    """Configuration class for VoiceAssistant."""
     language: str = 'tr-TR'
     timeout: int = 5
     ambient_duration: int = 1
@@ -25,31 +26,46 @@ class VoiceAssistantConfig:
     chunk_size: int = 1024
     max_retries: int = 3
     retry_delay: float = 1.0
+    energy_threshold: int = 4000
+    pause_threshold: float = 0.8
+    non_speaking_duration: float = 0.5
+    dynamic_energy_threshold: bool = True
 
 class VoiceAssistant:
+    """Main voice assistant class that handles speech recognition and synthesis."""
+    
     def __init__(self, config: Optional[VoiceAssistantConfig] = None):
+        """Initialize the voice assistant with given or default configuration."""
         try:
             self.config = config or VoiceAssistantConfig()
             self.recognizer = sr.Recognizer()
             self.logger = logging.getLogger(__name__)
             
-            # Initialize pygame mixer
-            try:
-                pygame.mixer.quit()  # Ensure clean state
-                pygame.mixer.init(frequency=self.config.sample_rate)
-            except Exception as e:
-                self.logger.error(f"Error initializing audio system: {e}")
-                raise
-                
-            # Adjust recognition parameters
-            self.recognizer.dynamic_energy_threshold = True
-            self.recognizer.energy_threshold = 4000
-            self.recognizer.pause_threshold = 0.8
-            self.recognizer.non_speaking_duration = 0.5
+            # Initialize audio system
+            self._init_audio_system()
+            
+            # Configure speech recognition
+            self._configure_recognition()
             
         except Exception as e:
             self.logger.error(f"Initialization error: {e}")
             raise
+    
+    def _init_audio_system(self):
+        """Initialize the audio system for playback."""
+        try:
+            pygame.mixer.quit()  # Ensure clean state
+            pygame.mixer.init(frequency=self.config.sample_rate)
+        except Exception as e:
+            self.logger.error(f"Error initializing audio system: {e}")
+            raise
+    
+    def _configure_recognition(self):
+        """Configure speech recognition parameters."""
+        self.recognizer.dynamic_energy_threshold = self.config.dynamic_energy_threshold
+        self.recognizer.energy_threshold = self.config.energy_threshold
+        self.recognizer.pause_threshold = self.config.pause_threshold
+        self.recognizer.non_speaking_duration = self.config.non_speaking_duration
         
     def listen(self) -> Optional[str]:
         """Listen for voice input and convert to text."""
