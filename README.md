@@ -268,7 +268,7 @@ Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için [LICENSE](LICE
 Ahmet Mert Şengöl
 - 📧 Email: [21sandn21@gmail.com](mailto:21sandn21@gmail.com)
 - 🐦 Twitter: [@ahmertsengol](https://twitter.com/ahmertsengol)
-- 💼 LinkedIn: [Ahmet Mert Şengöl](https://linkedin.com/in/ahmertsengol)
+- 💼 LinkedIn: [Ahmet Mert Şengöl](www.linkedin.com/in/ahmet-mert-şengöl-3375541b4)
 - 🌐 Website: [ahmertsengol.com](https://ahmertsengol.com)
 
 ## 🌟 Teşekkürler
