@@ -15,6 +15,7 @@ import glob
 import psutil
 from dataclasses import dataclass
 import pythoncom  # COM için gerekli
+import traceback
 
 @dataclass
 class ApplicationInfo:
@@ -26,7 +27,7 @@ class ApplicationInfo:
     icon_path: str = ""
 
 class SystemService:
-    def __init__(self, config_path: str = "config/system_paths.json"):
+    def __init__(self, config_path: str = "config/system_paths.json", voice_assistant=None):
         self.logger = logging.getLogger(__name__)
         pygame.mixer.init()
         self.config_path = config_path
@@ -35,6 +36,7 @@ class SystemService:
         self.music_paths = self._load_music_paths()
         self.running_apps: Dict[str, subprocess.Popen] = {}
         self.discovered_apps: Dict[str, ApplicationInfo] = {}
+        self.voice_assistant = voice_assistant
         pythoncom.CoInitialize()  # COM'u başlat
         
         # Common Windows application paths
@@ -481,4 +483,17 @@ class SystemService:
             return True
         except Exception as e:
             self.logger.error(f"Error updating paths: {e}")
-            return False 
+            return False
+
+    def stop_speaking(self):
+        """Stop the current speech output."""
+        try:
+            self.logger.info("Stopping speech output...")
+            if self.voice_assistant:
+                self.voice_assistant.stop_speaking()
+                self.logger.debug("Speech output stopped successfully")
+            else:
+                self.logger.debug("No voice assistant instance available")
+        except Exception as e:
+            self.logger.error(f"Error stopping speech output: {e}\n{traceback.format_exc()}")
+            raise 

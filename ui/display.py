@@ -3,54 +3,67 @@ Modern UI component for the voice assistant using tkinter.
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import threading
-from typing import Callable
+from typing import Callable, Optional
 from datetime import datetime
 import json
 from pathlib import Path
 from core.services.system_service import SystemService, ApplicationInfo
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
 
 class VoiceAssistantUI:
     def __init__(self, system_service: SystemService, on_start: Callable = None, on_stop: Callable = None):
-        self.root = tk.Tk()
-        self.root.title("Lazzaran Voice Assistant")
-        self.root.geometry("1000x500")  # Daha geniş ve kısa pencere
-        
-        # Pencere minimum boyutu
-        self.root.minsize(800, 400)
-        
-        # Pencereyi ekranın ortasında başlat
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x = (screen_width - 1000) // 2
-        y = (screen_height - 500) // 2
-        self.root.geometry(f"1000x500+{x}+{y}")
-        
-        self.setup_theme()
-        
-        self.system_service = system_service
-        self.on_start = on_start
-        self.on_stop = on_stop
-        self.is_listening = False
-        
-        # Yükleme ekranı için değişkenler
-        self.loading_window = None
-        self.loading_canvas = None
-        self.loading_progress = 0
-        self.loading_text = ""
-        self.loading_steps = [
-            "Dinleme durduruluyor...",
-            "Konsol temizleniyor...",
-            "Uygulamalar yenileniyor...",
-            "Sistem yeniden başlatılıyor...",
-            "Tamamlandı!"
-        ]
-        
-        # Uygulama kapatma işlevi için protokol ekle
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
-        self.setup_ui()
+        try:
+            logger.info("Initializing voice assistant UI...")
+            
+            self.root = tk.Tk()
+            self.root.title("Lazzaran Voice Assistant")
+            self.root.geometry("1000x500")  # Daha geniş ve kısa pencere
+            
+            # Pencere minimum boyutu
+            self.root.minsize(800, 400)
+            
+            # Pencereyi ekranın ortasında başlat
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            x = (screen_width - 1000) // 2
+            y = (screen_height - 500) // 2
+            self.root.geometry(f"1000x500+{x}+{y}")
+            
+            self.setup_theme()
+            
+            self.system_service = system_service
+            self.on_start = on_start
+            self.on_stop = on_stop
+            self.is_listening = False
+            
+            # Yükleme ekranı için değişkenler
+            self.loading_window = None
+            self.loading_canvas = None
+            self.loading_progress = 0
+            self.loading_text = ""
+            self.loading_steps = [
+                "Dinleme durduruluyor...",
+                "Konsol temizleniyor...",
+                "Uygulamalar yenileniyor...",
+                "Sistem yeniden başlatılıyor...",
+                "Tamamlandı!"
+            ]
+            
+            # Uygulama kapatma işlevi için protokol ekle
+            self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+            
+            self.setup_ui()
+            
+            logger.info("Voice assistant UI initialized successfully")
+            
+        except Exception as e:
+            logger.critical(f"UI initialization failed: {e}\n{traceback.format_exc()}")
+            raise
         
     def setup_theme(self):
         """Setup dark theme for the application"""
@@ -115,9 +128,11 @@ class VoiceAssistantUI:
         self.time_label.pack(side=tk.RIGHT)
         
         # Console output
-        self.console = tk.Text(
+        self.console = scrolledtext.ScrolledText(
             left_frame,
-            height=20,
+            wrap=tk.WORD,
+            width=40,
+            height=10,
             bg='#1e1e1e',
             fg='#ffffff',
             font=('Consolas', 11)
@@ -144,6 +159,7 @@ class VoiceAssistantUI:
             font=('Segoe UI', 10, 'bold')
         )
         
+        # Dinleme başlat/durdur butonu
         self.start_button = ttk.Button(
             button_frame,
             text="Start Listening",
@@ -152,7 +168,23 @@ class VoiceAssistantUI:
         )
         self.start_button.pack(side=tk.LEFT, padx=5)
         
-        # Reset butonu ekle
+        # Konuşmayı durdur butonu
+        style.configure("StopSpeech.TButton",
+            background='#ffc107',
+            foreground='black',
+            padding=8,
+            font=('Segoe UI', 10, 'bold')
+        )
+        
+        self.stop_speech_button = ttk.Button(
+            button_frame,
+            text="Konuşmayı Durdur",
+            style="StopSpeech.TButton",
+            command=self.stop_speaking
+        )
+        self.stop_speech_button.pack(side=tk.LEFT, padx=5)
+        
+        # Reset butonu
         style.configure("Reset.TButton",
             background='#ffd700',
             foreground='black',
@@ -360,23 +392,21 @@ class VoiceAssistantUI:
         self.time_label.configure(text=current_time)
         self.root.after(1000, self.update_time)
     
-    def log_message(self, message: str, message_type: str = "info"):
-        """Log a message to the console with timestamp"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # Color coding for different message types
-        colors = {
-            "info": "#ffffff",
-            "error": "#ff6b6b",
-            "success": "#69db7c",
-            "warning": "#ffd43b"
-        }
-        
-        self.console.tag_configure(message_type, foreground=colors.get(message_type, "#ffffff"))
-        
-        self.console.insert(tk.END, f"[{timestamp}] ", "timestamp")
-        self.console.insert(tk.END, f"{message}\n", message_type)
-        self.console.see(tk.END)
+    def log_message(self, message: str, level: str = "info"):
+        """Add a message to the log display."""
+        try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            formatted_message = f"[{timestamp}] {message}\n"
+            
+            self.console.insert(tk.END, formatted_message, level)
+            self.console.see(tk.END)
+            
+            # Also log to system logger
+            log_level = getattr(logging, level.upper(), logging.INFO)
+            logger.log(log_level, message)
+            
+        except Exception as e:
+            logger.error(f"Error logging message: {e}\n{traceback.format_exc()}")
     
     def clear_console(self):
         """Clear the console output"""
@@ -384,7 +414,13 @@ class VoiceAssistantUI:
     
     def run(self):
         """Start the UI main loop"""
-        self.root.mainloop()
+        try:
+            logger.info("Starting UI main loop")
+            self.root.mainloop()
+            logger.info("UI main loop ended")
+        except Exception as e:
+            logger.critical(f"UI main loop error: {e}\n{traceback.format_exc()}")
+            raise
     
     def stop(self):
         """Stop the UI"""
@@ -583,3 +619,13 @@ class VoiceAssistantUI:
             
             # Thread'i başlat
             threading.Thread(target=reset_thread).start() 
+    
+    def stop_speaking(self):
+        """Stop current speech output"""
+        try:
+            logger.debug("Stopping speech output...")
+            self.system_service.stop_speaking()
+            self.log_message("Konuşma durduruldu", "info")
+        except Exception as e:
+            logger.error(f"Error stopping speech: {e}\n{traceback.format_exc()}")
+            self.log_message("Konuşma durdurulamadı", "error") 
