@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import time
 import traceback
+import threading
+import queue
 
 @dataclass
 class VoiceAssistantConfig:
@@ -45,8 +47,10 @@ class VoiceAssistant:
             self.logger.debug(f"Using configuration: {self.config}")
             
             self.recognizer = sr.Recognizer()
-            self.is_listening = False
-            self.is_speaking = False
+            self._is_listening = False
+            self._is_speaking = False
+            self._lock = threading.Lock()
+            self._audio_queue = queue.Queue()
             
             # Initialize audio system
             self._init_audio_system()
@@ -59,12 +63,37 @@ class VoiceAssistant:
         except Exception as e:
             self.logger.critical(f"Voice assistant initialization failed: {e}\n{traceback.format_exc()}")
             raise
+
+    @property
+    def is_listening(self):
+        """Thread-safe access to listening state."""
+        with self._lock:
+            return self._is_listening
+
+    @is_listening.setter
+    def is_listening(self, value):
+        """Thread-safe setting of listening state."""
+        with self._lock:
+            self._is_listening = value
+
+    @property
+    def is_speaking(self):
+        """Thread-safe access to speaking state."""
+        with self._lock:
+            return self._is_speaking
+
+    @is_speaking.setter
+    def is_speaking(self, value):
+        """Thread-safe setting of speaking state."""
+        with self._lock:
+            self._is_speaking = value
     
     def _init_audio_system(self):
         """Initialize the audio system for playback."""
         try:
             self.logger.debug("Initializing audio system...")
-            pygame.mixer.quit()  # Ensure clean state
+            if pygame.mixer.get_init():
+                pygame.mixer.quit()
             pygame.mixer.init(frequency=self.config.sample_rate)
             self.logger.debug("Audio system initialized successfully")
         except Exception as e:
@@ -108,7 +137,6 @@ class VoiceAssistant:
                 self.logger.debug("No active speech to stop")
         except Exception as e:
             self.logger.error(f"Error stopping speech output: {e}\n{traceback.format_exc()}")
-            raise
     
     def listen(self) -> Optional[str]:
         """Listen for voice input and convert to text."""
@@ -180,10 +208,16 @@ class VoiceAssistant:
             temp_file = Path(self.config.temp_audio_file)
             self.logger.debug(f"Using temporary file: {temp_file}")
             
+            # Ensure temp directory exists
+            temp_file.parent.mkdir(parents=True, exist_ok=True)
+            
             # Generate speech
             self.logger.debug("Generating speech with gTTS...")
             tts = gTTS(text=text, lang=self.config.language.split('-')[0], slow=False)
-            tts.save(str(temp_file))
+            
+            # Save with exclusive access
+            with open(temp_file, 'wb') as f:
+                tts.write_to_fp(f)
             self.logger.debug("Speech generated and saved successfully")
             
             # Play audio
@@ -213,7 +247,13 @@ class VoiceAssistant:
             try:
                 self.logger.debug(f"Cleaning up temporary file: {file_path}")
                 pygame.mixer.music.unload()
-                file_path.unlink()
+                # Retry a few times if file is locked
+                for _ in range(3):
+                    try:
+                        file_path.unlink()
+                        break
+                    except PermissionError:
+                        time.sleep(0.1)
                 self.logger.debug("Temporary file cleaned up successfully")
             except Exception as e:
                 self.logger.error(f"Error cleaning up audio file: {e}\n{traceback.format_exc()}")
